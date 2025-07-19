@@ -3,42 +3,85 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from IPython.display import display
-import ipywidgets as widgets
+import numpy as np
 
-def get_last_full_week():
-    """取得最近一個完整的美股交易週（週一到週五）"""
-    today = datetime.now(ZoneInfo("Asia/Shanghai"))  # 明確指定中國時區
+def get_last_two_fridays():
+    """取得上週五和本週五的日期（以美股一週為基準，時區可自訂）"""
+    today = datetime.now(ZoneInfo("Asia/Shanghai"))
+    # 計算今天是星期幾（0=週一, 4=週五, 6=週日）
     weekday = today.weekday()
-    # 若今天為週末，自動回推到週五
-    if weekday >= 5:
-        today = today - timedelta(days=weekday - 4)
     
-    last_monday = today - timedelta(days=today.weekday())
-    last_friday = last_monday + timedelta(days=4)
-    return last_monday.date(), last_friday.date()
+    # 找出本週的週五
+    # (週五是 4)
+    days_until_friday = 4 - weekday
+    if days_until_friday < 0:
+        # 今天是週六、週日或已過週五 → 回推到這週五
+        this_friday = today + timedelta(days=days_until_friday)
+    else:
+        # 還沒到週五，直接往後加
+        this_friday = today + timedelta(days=days_until_friday)
+    
+    # 上週五直接往前推 7 天
+    last_friday = this_friday - timedelta(days=7)
+    
+    return last_friday.date(), this_friday.date()
+
+def safe_float(arr):
+    """抽出array唯一元素轉float，或原本就是float就直接回傳"""
+    if isinstance(arr, (list, np.ndarray)):
+        if len(arr) > 0:
+            return float(arr[0])
+        else:
+            return None
+    elif hasattr(arr, "item"):  # np scalar
+        return float(arr.item())
+    else:
+        return float(arr)
+
+def print_adjusted_returns(df, adjusted_total_return):
+    symbol_parts = []
+    for idx, row in df.iterrows():
+        name = row['symbol']
+        pct = row['change_pct']
+        pred = row['prediction']
+        if pd.isna(pct) or pred not in ['bullish', 'bearish']:
+            continue  # 忽略缺資料或沒指定預測方向
+        adj_pct = pct if pred == 'bullish' else -pct
+        sign = '+' if adj_pct >= 0 else '-'
+        # 絕對值顯示
+        symbol_parts.append(f"{name} {sign}{abs(adj_pct):.1f}%")
+    # 合併顯示
+    total_sign = '+' if adjusted_total_return >= 0 else '-'
+    print(f"最終結果：")
+    print("（" + "、".join(symbol_parts) + f"）：{total_sign}{abs(adjusted_total_return):.1f}%")
+    return
 
 def calc_weekly_return(symbols, predictions):
-    start_date, end_date = get_last_full_week()
+    start_date, end_date = get_last_two_fridays()
     results = []
     for symbol in symbols:
         try:
             df = yf.download(symbol, start=start_date, end=end_date + timedelta(days=1), interval='1d', progress=False, auto_adjust=False)
             df = df.loc[df.index.dayofweek < 5]  # 過濾週末
-            if len(df) < 2 or df.index[0].date() > start_date or df.index[-1].date() < end_date:
+            df_fridays = df[(df.index.date == start_date) | (df.index.date == end_date)]
+            if len(df_fridays) < 2:
                 results.append({
                     'symbol': symbol,
                     'open': None,
                     'close': None,
                     'change_pct': None,
-                    'msg': '資料不足或非美股',
-                    'prediction': predictions.get(symbol, 'none'),  # 預測，預設 'none'
+                    'msg': '兩個週五其中之一缺資料',
+                    'prediction': predictions.get(symbol, 'none'),
                     'prediction_result': 'N/A'
                 })
                 continue
 
-            monday_open = df.iloc[0]['Open'].iloc[0]  # 從 Series 取第一個值
-            friday_close = df.iloc[-1]['Close'].iloc[0]  # 從 Series 取第一個值
-            change_pct = (friday_close - monday_open) / monday_open * 100
+            last_friday_close_arr = df_fridays.loc[df_fridays.index.date == start_date, 'Close'].values
+            this_friday_close_arr = df_fridays.loc[df_fridays.index.date == end_date, 'Close'].values
+            last_friday_close = safe_float(last_friday_close_arr[0])
+            this_friday_close = safe_float(this_friday_close_arr[0])
+            change_pct = (this_friday_close - last_friday_close) / last_friday_close * 100
+
             pred = predictions.get(symbol, 'none')
             pred_result = 'N/A'
             if pred == 'bullish' and change_pct > 0:
@@ -49,8 +92,8 @@ def calc_weekly_return(symbols, predictions):
                 pred_result = 'Wrong'
             results.append({
                 'symbol': symbol,
-                'open': monday_open,
-                'close': friday_close,
+                'open': last_friday_close,
+                'close': this_friday_close,
                 'change_pct': change_pct,
                 'msg': '',
                 'prediction': pred,
@@ -79,12 +122,12 @@ def show_result(symbols, predictions):
 
     df = pd.DataFrame(results)
     df_show = df[['symbol', 'open', 'close', 'change_pct', 'msg', 'prediction', 'prediction_result']]
-    df_show.columns = ['股票代碼', '週一開盤價', '週五收盤價', '漲跌幅(%)', '備註', '預測', '預測結果']
-    df_show['週一開盤價'] = df_show['週一開盤價'].round(2)
-    df_show['週五收盤價'] = df_show['週五收盤價'].round(2)
-    df_show['漲跌幅(%)'] = df_show['漲跌幅(%)'].round(3)
+    df_show.columns = ['股票代碼', '上週五收盤價', '本週五收盤價', '漲跌幅(%)', '備註', '預測', '預測結果']
     
-
+    # 防呆: 如果資料是None，不要 round
+    for col in ['上週五收盤價', '本週五收盤價', '漲跌幅(%)']:
+        df_show[col] = pd.to_numeric(df_show[col], errors='coerce').round(3 if col=='漲跌幅(%)' else 2)
+    
     try:
         from IPython.display import display
         display(df_show)
@@ -105,14 +148,18 @@ def show_result(symbols, predictions):
                 else:  # bullish
                     adjusted_returns.append(row['change_pct'])
         adjusted_total_return = sum(adjusted_returns) if adjusted_returns else 0
-        correct_pred_returns = df[df['prediction_result'] == 'Correct']['change_pct'].dropna().sum()  # 預測正確的報酬率總和
         
-        print(f"調整後總報酬率（根據預測）：{adjusted_total_return:.2f}%")
-        if pd.notna(correct_pred_returns) and correct_pred_returns != 0:
-            print(f"預測正確的報酬率總和：{correct_pred_returns:.2f}%")
+        if isinstance(adjusted_total_return, np.ndarray):
+            if adjusted_total_return.size == 1:
+                adjusted_total_return = float(adjusted_total_return[0])
+            else:
+                adjusted_total_return = float(adjusted_total_return.sum())
+        print(f"調整後總報酬率（根據預測方向）：{adjusted_total_return:.2f}%")
 
     if df['change_pct'].isnull().any():
-        print("\n有標的資料缺漏（如非美股、停牌、代碼錯誤），詳見『備註』欄.")
+        print("\n有標的資料缺漏（如非美股、停牌、代碼錯誤），詳見『備註』欄。")
+        
+    print_adjusted_returns(df, adjusted_total_return)
 
 # 使用者輸入的預測
 predictions = {
