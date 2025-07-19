@@ -1,0 +1,2 @@
+# stock_portfolio_calculate
+計算本周一到五選擇標的組合的回測報酬率。
