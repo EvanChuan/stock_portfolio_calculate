@@ -16,8 +16,8 @@ def get_last_two_fridays():
         this_friday = today + timedelta(days=days_until_friday)
     else:
         this_friday = today + timedelta(days=days_until_friday)
-    last_friday = this_friday - timedelta(days=7)
-    return last_friday.date(), this_friday.date()
+    last_monday = today - timedelta(days=today.weekday())
+    return last_monday.date(), this_friday.date()
 
 def calc_weekly_return(symbols, predictions):
     start_date, end_date = get_last_two_fridays()
@@ -36,16 +36,16 @@ def calc_weekly_return(symbols, predictions):
 
             # 只保留上週五與本週五
             df_fridays = df[(df.index.date == start_date) | (df.index.date == end_date)]
-            last_friday_close_arr = df_fridays.loc[df_fridays.index.date == start_date, 'Close'].values
+            last_monday_arr = df_fridays.loc[df_fridays.index.date == start_date, 'Open'].values
             this_friday_close_arr = df_fridays.loc[df_fridays.index.date == end_date, 'Close'].values
 
-            last_friday_close = float(last_friday_close_arr[0]) if len(last_friday_close_arr) else None
+            last_monday_open = float(last_monday_arr[0]) if len(last_monday_arr) else None
             this_friday_close = float(this_friday_close_arr[0]) if len(this_friday_close_arr) else None
 
-            if last_friday_close is None or this_friday_close is None:
+            if last_monday_open is None or this_friday_close is None:
                 results.append({
                     'symbol': symbol,
-                    'open': last_friday_close,
+                    'open': last_monday_open,
                     'close': this_friday_close,
                     'change_pct': None,
                     'msg': '兩個週五其中之一缺資料',
@@ -54,7 +54,7 @@ def calc_weekly_return(symbols, predictions):
                 })
                 continue
 
-            change_pct = (this_friday_close - last_friday_close) / last_friday_close * 100
+            change_pct = (this_friday_close - last_monday_open) / last_monday_open * 100
 
             pred = predictions.get(symbol, 'none')
             pred_result = 'N/A'
@@ -66,7 +66,7 @@ def calc_weekly_return(symbols, predictions):
                 pred_result = 'Wrong'
             results.append({
                 'symbol': symbol,
-                'open': last_friday_close,
+                'open': last_monday_open,
                 'close': this_friday_close,
                 'change_pct': change_pct,
                 'msg': '',
@@ -101,6 +101,9 @@ def print_adjusted_returns(df, adjusted_total_return):
 
 # ==== Streamlit UI（每檔股票一個欄位） ====
 st.write("請直接於下方每一行輸入股票代碼並選擇預測方向（空白的欄位將略過）")
+st.write("因資料來源為yahoo finace，如果標的非美股交易所標的，請查詢以下資料來源的正確標的代碼，否則可能找不到資料。")
+st.write("例如：台積電的美股代碼為 TSM，台灣交易所為 2330.TW;小米的港股代碼為 1810.HK，請注意不要輸入錯誤的代碼。")
+st.markdown("[點我開啟 yahoo finace 查詢](https://finance.yahoo.com/markets/stocks/most-active/)")
 
 num_stocks = 5  # 你可以讓用戶調整這個數量
 stock_inputs = []
@@ -130,7 +133,7 @@ if submitted:
     df_show = df.copy()
     df_show = df_show.rename(columns={
         'symbol': '股票代碼',
-        'open': '上週五收盤價',
+        'open': '週一開盤價',
         'close': '本週五收盤價',
         'change_pct': '漲跌幅(%)',
         'msg': '備註',
