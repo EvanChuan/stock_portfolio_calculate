@@ -48,7 +48,7 @@ def calc_weekly_return(symbols, predictions):
                     'open': last_monday_open,
                     'close': this_friday_close,
                     'change_pct': None,
-                    'msg': '兩個週五其中之一缺資料',
+                    'msg': '週一至週五之間其中有缺資料',
                     'prediction': predictions.get(symbol, 'none'),
                     'prediction_result': 'N/A'
                 })

@@ -23,8 +23,9 @@ def get_last_two_fridays():
     
     # 上週五直接往前推 7 天
     last_friday = this_friday - timedelta(days=7)
+    last_monday = last_friday - timedelta(days=last_friday.weekday())  # 上週一
     
-    return last_friday.date(), this_friday.date()
+    return last_friday.date(), this_friday.date(), last_monday.date()
 
 def safe_float(arr):
     """抽出array唯一元素轉float，或原本就是float就直接回傳"""
@@ -57,7 +58,8 @@ def print_adjusted_returns(df, adjusted_total_return):
     return
 
 def calc_weekly_return(symbols, predictions):
-    start_date, end_date = get_last_two_fridays()
+    # start_date, end_date = get_last_two_fridays()
+    end_date, _, start_date = get_last_two_fridays()
     results = []
     for symbol in symbols:
         try:
@@ -163,12 +165,12 @@ def show_result(symbols, predictions):
 
 # 使用者輸入的預測
 predictions = {
-    'AVAV': 'bullish',
-    'PSX': 'bullish',
-    'JPM': 'bullish',
-    'PG': 'bearish',
-    'TAP': 'bearish'
+    'META': 'bullish',
+    'NI': 'bullish',
+    'PRIM': 'bullish',
+    'GNW': 'bullish',
+    'XYZ': 'bullish'
 }
 
-syms = ['AVAV', 'PSX', 'JPM', 'PG', 'TAP']  # 預設股票代碼
+syms = ['META', 'NI', 'PRIM', 'GNW', 'XYZ']  # 預設股票代碼
 show_result(syms, predictions)
